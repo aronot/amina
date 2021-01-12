@@ -1,0 +1,247 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cli
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cli-persistent
+      app.kubernetes.io/instance: cli
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: cli-persistent
+        app.kubernetes.io/instance: cli
+    spec:
+      volumes:
+        - name: nginx
+          persistentVolumeClaim:
+            claimName: nginx
+      enableServiceLinks: false
+      securityContext:
+        {}
+      containers:
+        - image: replaceMe
+          name: cli
+          securityContext:
+            {}
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: SERVICE_NAME
+              value: "cli"
+          envFrom:
+            - configMapRef:
+                name: lagoon-env
+          volumeMounts:
+            - name: nginx
+              mountPath: "/app/web/sites/default/files/"
+          resources:
+            {}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: "nginx"
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: "5Gi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: nginx-php-persistent
+    app.kubernetes.io/instance: nginx
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nginx-php-persistent
+      app.kubernetes.io/instance: nginx
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: nginx-php-persistent
+        app.kubernetes.io/instance: nginx
+    spec:
+      volumes:
+        - name: nginx
+          persistentVolumeClaim:
+            claimName: nginx
+      enableServiceLinks: false
+      securityContext:
+        {}
+      containers:
+        - image: replaceMe
+          name: "nginx"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /nginx_status
+              port: 50000
+            initialDelaySeconds: 1
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /nginx_status
+              port: 50000
+            initialDelaySeconds: 90
+            timeoutSeconds: 3
+            failureThreshold: 5
+          env:
+            - name: NGINX_FASTCGI_PASS
+              value: '127.0.0.1'
+          envFrom:
+            - configMapRef:
+                name: lagoon-env
+          volumeMounts:
+            - name: nginx
+              mountPath: "/app/web/sites/default/files/"
+          resources:
+            {}
+
+        - image: replaceMe
+          name: "php"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9000
+              protocol: TCP
+          readinessProbe:
+            tcpSocket:
+              port: 9000
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 9000
+            initialDelaySeconds: 60
+            periodSeconds: 10
+          envFrom:
+            - configMapRef:
+                name: lagoon-env
+          env:
+            - name: NGINX_FASTCGI_PASS
+              value: '127.0.0.1'
+          volumeMounts:
+            - name: nginx
+              mountPath: "/app/web/sites/default/files/"
+          resources:
+            {}
+---
+apiVersion: networking.k8s.io/v1beta1
+kind: Ingress
+metadata:
+  name: nginx
+spec:
+  rules:
+    - host: "localhost"
+      http:
+        paths:
+          - backend:
+              serviceName: nginx
+              servicePort: 8080
+---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: lagoon-env
+data:
+  LAGOON_PROJECT: drupal-example
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mariadb
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mariadb
+      app.kubernetes.io/instance: mariadb
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mariadb
+        app.kubernetes.io/instance: mariadb
+    spec:
+      volumes:
+        - name: mariadb
+          persistentVolumeClaim:
+            claimName: mariadb
+      securityContext:
+        fsGroup: 0
+      containers:
+        - name: mariadb
+          securityContext:
+            runAsGroup: 0
+          image: amazeio/mariadb-drupal
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: lagoon-env
+          ports:
+          - containerPort: 3306
+            protocol: TCP
+          readinessProbe:
+            tcpSocket:
+              port: 3306
+            initialDelaySeconds: 1
+            timeoutSeconds: 1
+          livenessProbe:
+            tcpSocket:
+              port: 3306
+            initialDelaySeconds: 120
+            periodSeconds: 5
+          volumeMounts:
+            - name: mariadb
+              mountPath: /var/lib/mysql
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mariad
+spec:
+  type: ClusterIP
+  ports:
+    - port: 3306
+      targetPort: 3306
+      protocol: TCP
+      name: 3306-tcp
+  selector:
+    app.kubernetes.io/name: mariadb
+    app.kubernetes.io/instance: mariadb
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mariadb
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
