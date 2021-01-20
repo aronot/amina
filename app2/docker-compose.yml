@@ -24,7 +24,7 @@ services:
   cli: # cli container, will be used for executing composer and any local commands (drush, drupal, etc.)
     build:
       context: .
-      dockerfile: cl1.dockerfile
+      dockerfile: cli.dockerfile
     image: *lagoon-project # this image will be reused as `CLI_IMAGE` in subsequent Docker builds
     << : *default-volumes # loads the defined volumes from the top
     user: root
@@ -63,7 +63,7 @@ services:
 
 
   mariadb:
-    image: amazeio/mariadb-drupal
+    image: amazeeio/mariadb-drupal
     ports:
       - "3306" # exposes the port 3306 with a random local port, find it with `docker-compose port mariadb 3306`
     << : *default-user # uses the defined user from top

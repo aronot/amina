@@ -23,7 +23,7 @@ spec:
       securityContext:
         {}
       containers:
-        - image: replaceMe
+        - image: aronot/cli:1.0
           name: cli
           securityContext:
             {}
@@ -69,7 +69,7 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: nginx
+  name: php 
 spec:
   replicas: 1
   selector:
@@ -90,39 +90,7 @@ spec:
       securityContext:
         {}
       containers:
-        - image: replaceMe
-          name: "nginx"
-          imagePullPolicy: IfNotPresent
-          ports:
-            - name: http
-              containerPort: 8080
-              protocol: TCP
-          readinessProbe:
-            httpGet:
-              path: /nginx_status
-              port: 50000
-            initialDelaySeconds: 1
-            timeoutSeconds: 3
-          livenessProbe:
-            httpGet:
-              path: /nginx_status
-              port: 50000
-            initialDelaySeconds: 90
-            timeoutSeconds: 3
-            failureThreshold: 5
-          env:
-            - name: NGINX_FASTCGI_PASS
-              value: '127.0.0.1'
-          envFrom:
-            - configMapRef:
-                name: lagoon-env
-          volumeMounts:
-            - name: nginx
-              mountPath: "/app/web/sites/default/files/"
-          resources:
-            {}
-
-        - image: replaceMe
+        - image: aronot/php:1.0 
           name: "php"
           imagePullPolicy: IfNotPresent
           ports:
@@ -150,6 +118,49 @@ spec:
           resources:
             {}
 ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nginx-php-persistent
+      app.kubernetes.io/instance: nginx
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: nginx-php-persistent
+        app.kubernetes.io/instance: nginx
+    spec:
+      volumes:
+        - name: nginx
+          persistentVolumeClaim:
+            claimName: nginx
+      enableServiceLinks: false
+      securityContext:
+        {}
+      containers:
+        - image: aronot/ngnix:2.0
+          name: "nginx"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080 
+              protocol: TCP
+          env:
+            - name: NGINX_FASTCGI_PASS
+              value: '127.0.0.1'
+          envFrom:
+            - configMapRef:
+                name: lagoon-env
+          volumeMounts:
+            - name: nginx
+              mountPath: "/app/web/sites/default/files/"
+          resources:
+            {}
+---
 apiVersion: networking.k8s.io/v1beta1
 kind: Ingress
 metadata:
@@ -169,56 +180,6 @@ metadata:
   name: lagoon-env
 data:
   LAGOON_PROJECT: drupal-example
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mariadb
-spec:
-  replicas: 1
-  strategy:
-    type: Recreate
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: mariadb
-      app.kubernetes.io/instance: mariadb
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: mariadb
-        app.kubernetes.io/instance: mariadb
-    spec:
-      volumes:
-        - name: mariadb
-          persistentVolumeClaim:
-            claimName: mariadb
-      securityContext:
-        fsGroup: 0
-      containers:
-        - name: mariadb
-          securityContext:
-            runAsGroup: 0
-          image: amazeio/mariadb-drupal
-          imagePullPolicy: IfNotPresent
-          envFrom:
-            - configMapRef:
-                name: lagoon-env
-          ports:
-          - containerPort: 3306
-            protocol: TCP
-          readinessProbe:
-            tcpSocket:
-              port: 3306
-            initialDelaySeconds: 1
-            timeoutSeconds: 1
-          livenessProbe:
-            tcpSocket:
-              port: 3306
-            initialDelaySeconds: 120
-            periodSeconds: 5
-          volumeMounts:
-            - name: mariadb
-              mountPath: /var/lib/mysql
 ---
 apiVersion: v1
 kind: Service
